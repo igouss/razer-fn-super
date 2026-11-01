@@ -1,0 +1,1 @@
+SUBSYSTEM=="hidraw", ENV{ID_VENDOR_ID}=="1532", ENV{ID_MODEL_ID}=="0228", ENV{ID_USB_INTERFACE_NUM}=="01", TAG+="systemd", ENV{SYSTEMD_WANTS}+="razer-fn-super.service"
