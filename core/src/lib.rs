@@ -14,6 +14,13 @@ impl Key {
         let next: Self = decode(report)?;
         (next != self).then_some(next)
     }
+
+    pub const fn after_end(self) -> Option<Self> {
+        match self {
+            Self::Held => Some(Self::Released),
+            Self::Released => None,
+        }
+    }
 }
 
 fn decode(report: &[u8]) -> Option<Key> {
@@ -27,6 +34,16 @@ fn decode(report: &[u8]) -> Option<Key> {
 #[cfg(test)]
 mod tests {
     use super::Key;
+
+    #[test]
+    fn end_of_stream_releases_a_held_key() {
+        assert_eq!(Key::Held.after_end(), Some(Key::Released));
+    }
+
+    #[test]
+    fn end_of_stream_leaves_a_released_key_alone() {
+        assert_eq!(Key::Released.after_end(), None);
+    }
 
     #[test]
     fn empty_read_changes_nothing() {

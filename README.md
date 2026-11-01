@@ -30,9 +30,9 @@ The uninstall steps are in reverse: stop the service, then remove those three fi
 |---|---|---|
 | A report is a read whose first byte is `0x04`; FN is held when `0x01` appears anywhere in the rest of that read | The keyboard lists held keys in any slot, so position carries no meaning | `core/src/lib.rs` tests |
 | Only a change of FN state emits an event | Reports repeat while keys are held; a repeated press would be a false auto-repeat | `core/src/lib.rs` tests |
-| A held key is released on every exit that runs to completion | Super left stuck down would capture all later typing | `translate` tests in `src/main.rs` |
+| A held key is released on every exit that runs to completion | Super left stuck down would capture all later typing | `after_end` tests in `core/src/lib.rs`, `translate` tests in `src/main.rs` |
 | ENODEV, EIO and end of stream exit 0; anything else exits 1 | `Restart=on-failure` must not loop on an unplugged keyboard but must retry real faults | `accept_disconnect` tests in `src/main.rs` |
-| SIGTERM and SIGKILL rely on the kernel | Closing the uinput device releases its keys, so no signal handler is needed | Kernel behaviour |
+| SIGTERM and SIGKILL have no handler | Assumed: closing the uinput device releases its keys | Nothing; not tested |
 | The core has no dependencies and no `std` | Report logic stays testable with no I/O in its tree | `#![no_std]`, `hex-lint` |
 
 ## Development
@@ -41,8 +41,8 @@ The uninstall steps are in reverse: stop the service, then remove those three fi
 
 Runs the no-comments gate, rustfmt, clippy, the tests and `hex-lint`.
 
-Mutation testing with `cargo mutants --workspace` leaves four survivors in the I/O
-shell (`main`, `run`, `emit`, `Failure::fmt`). They need a real hidraw and uinput
+Mutation testing with `cargo mutants --workspace` leaves three survivors in the I/O
+shell (`main`, `run`, `emit`). They need a real hidraw and uinput
 device, so no unit test reaches them.
 
 There is no generated view of the structure: the project is two crates and a two-state enum, so

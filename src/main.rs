@@ -1,31 +1,15 @@
-use std::fmt;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read};
 use std::process::ExitCode;
 
 use evdev::uinput::VirtualDevice;
-use evdev::{AttributeSet, BusType, EventType, InputEvent, InputId, KeyCode};
+use evdev::{AttributeSet, BusType, InputId, KeyCode, KeyEvent};
 use razer_fn_super_core::Key;
 
 const HIDRAW: &str = "/dev/input/by-id/usb-Razer_Razer_BlackWidow_Elite-if01-hidraw";
 const DEVICE_NAME: &str = "Razer FN as Super";
+const SUPER: KeyCode = KeyCode::KEY_LEFTMETA;
 const REPORT_CAPACITY: usize = 64;
-
-enum Failure {
-    OpenHidraw(io::Error),
-    CreateUinput(io::Error),
-    Translate(io::Error),
-}
-
-impl fmt::Display for Failure {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::OpenHidraw(error) => write!(formatter, "opening {HIDRAW}: {error}"),
-            Self::CreateUinput(error) => write!(formatter, "creating uinput device: {error}"),
-            Self::Translate(error) => write!(formatter, "translating reports: {error}"),
-        }
-    }
-}
 
 fn main() -> ExitCode {
     match run() {
@@ -37,17 +21,18 @@ fn main() -> ExitCode {
     }
 }
 
-fn run() -> Result<(), Failure> {
-    let mut hidraw: File = File::open(HIDRAW).map_err(Failure::OpenHidraw)?;
-    let mut super_key: VirtualDevice = create_super_key().map_err(Failure::CreateUinput)?;
-    let outcome: io::Result<()> = translate(&mut hidraw, &mut |key: Key| emit(&mut super_key, key));
-    outcome
+fn run() -> Result<(), String> {
+    let hidraw: File =
+        File::open(HIDRAW).map_err(|error: io::Error| format!("opening {HIDRAW}: {error}"))?;
+    let mut super_key: VirtualDevice = create_super_key()
+        .map_err(|error: io::Error| format!("creating uinput device: {error}"))?;
+    translate(hidraw, |key: Key| emit(&mut super_key, key))
         .or_else(accept_disconnect)
-        .map_err(Failure::Translate)
+        .map_err(|error: io::Error| format!("translating reports: {error}"))
 }
 
 fn create_super_key() -> io::Result<VirtualDevice> {
-    let keys: AttributeSet<KeyCode> = AttributeSet::from_iter([KeyCode::KEY_LEFTMETA]);
+    let keys: AttributeSet<KeyCode> = AttributeSet::from_iter([SUPER]);
     VirtualDevice::builder()?
         .name(DEVICE_NAME)
         .input_id(InputId::new(BusType::BUS_USB, 1, 1, 1))
@@ -60,11 +45,7 @@ fn emit(device: &mut VirtualDevice, key: Key) -> io::Result<()> {
         Key::Held => 1,
         Key::Released => 0,
     };
-    device.emit(&[InputEvent::new(
-        EventType::KEY.0,
-        KeyCode::KEY_LEFTMETA.0,
-        value,
-    )])
+    device.emit(&[*KeyEvent::new(SUPER, value)])
 }
 
 fn accept_disconnect(error: io::Error) -> io::Result<()> {
@@ -75,36 +56,27 @@ fn accept_disconnect(error: io::Error) -> io::Result<()> {
 }
 
 fn translate(
-    reports: &mut impl Read,
-    emit: &mut impl FnMut(Key) -> io::Result<()>,
-) -> io::Result<()> {
-    let mut key: Key = Key::Released;
-    let outcome: io::Result<()> = forward(reports, emit, &mut key);
-    let release: io::Result<()> = match key {
-        Key::Held => emit(Key::Released),
-        Key::Released => Ok(()),
-    };
-    outcome.and(release)
-}
-
-fn forward(
-    reports: &mut impl Read,
-    emit: &mut impl FnMut(Key) -> io::Result<()>,
-    key: &mut Key,
+    mut reports: impl Read,
+    mut emit: impl FnMut(Key) -> io::Result<()>,
 ) -> io::Result<()> {
     let mut report: [u8; REPORT_CAPACITY] = [0; REPORT_CAPACITY];
-    loop {
+    let mut key: Key = Key::Released;
+    let outcome: io::Result<()> = loop {
         let length: usize = match reports.read(&mut report) {
-            Ok(0) => return Ok(()),
+            Ok(0) => break Ok(()),
             Ok(length) => length,
             Err(error) if error.kind() == ErrorKind::Interrupted => continue,
-            Err(error) => return Err(error),
+            Err(error) => break Err(error),
         };
         if let Some(next) = key.after_report(&report[..length]) {
-            *key = next;
-            emit(next)?;
+            key = next;
+            if let Err(error) = emit(next) {
+                break Err(error);
+            }
         }
-    }
+    };
+    let release: io::Result<()> = key.after_end().map_or(Ok(()), emit);
+    outcome.and(release)
 }
 
 #[cfg(test)]
@@ -145,9 +117,9 @@ mod tests {
         }
     }
 
-    fn emitted(mut script: Script) -> (Vec<Key>, io::Result<()>) {
+    fn emitted(script: Script) -> (Vec<Key>, io::Result<()>) {
         let mut keys: Vec<Key> = Vec::new();
-        let outcome: io::Result<()> = translate(&mut script, &mut |key: Key| {
+        let outcome: io::Result<()> = translate(script, |key: Key| {
             keys.push(key);
             Ok(())
         });
@@ -209,8 +181,8 @@ mod tests {
 
     #[test]
     fn failed_release_is_reported() {
-        let mut script: Script = Script::of([Step::Report(PRESS)]);
-        let outcome: io::Result<()> = translate(&mut script, &mut |key: Key| match key {
+        let script: Script = Script::of([Step::Report(PRESS)]);
+        let outcome: io::Result<()> = translate(script, |key: Key| match key {
             Key::Held => Ok(()),
             Key::Released => Err(io::Error::from_raw_os_error(libc::EBADF)),
         });
