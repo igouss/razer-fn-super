@@ -1,0 +1,17 @@
+[package]
+name = "razer-fn-super-core"
+version = "0.1.0"
+description = "The pure model behind razer-fn-super: report decoding and FN edge detection"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[package.metadata.hex-arch]
+role = "domain"
+
+[dependencies]
+
+[lints]
+workspace = true
