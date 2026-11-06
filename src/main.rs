@@ -1,14 +1,19 @@
+use std::ffi::CString;
 use std::fs::File;
 use std::io::{self, ErrorKind, Read};
 use std::process::ExitCode;
+use std::thread;
+use std::time::Duration;
 
 use evdev::uinput::VirtualDevice;
 use evdev::{AttributeSet, BusType, InputId, KeyCode, KeyEvent};
-use razer_fn_super_core::{Edge, Held, KeyState, VendorKey};
+use hidapi::{HidApi, HidDevice, HidError};
+use razer_fn_super_core::{Command, Edge, FEATURE_REPORT_LEN, Held, KeyState, VendorKey};
 
 const HIDRAW: &str = "/dev/input/by-id/usb-Razer_Razer_BlackWidow_Elite-if01-hidraw";
 const DEVICE_NAME: &str = "Razer FN and media keys";
 const REPORT_CAPACITY: usize = 64;
+const COMMAND_WAIT: Duration = Duration::from_millis(10);
 
 fn main() -> ExitCode {
     match run() {
@@ -21,6 +26,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), String> {
+    enter_driver_mode()?;
     let hidraw: File =
         File::open(HIDRAW).map_err(|error: io::Error| format!("opening {HIDRAW}: {error}"))?;
     let mut keys: VirtualDevice =
@@ -28,6 +34,31 @@ fn run() -> Result<(), String> {
     translate(hidraw, |edge: Edge| emit(&mut keys, edge))
         .or_else(accept_disconnect)
         .map_err(|error: io::Error| format!("translating reports: {error}"))
+}
+
+fn enter_driver_mode() -> Result<(), String> {
+    let path: CString = CString::new(HIDRAW).map_err(|error| format!("{HIDRAW}: {error}"))?;
+    HidApi::disable_device_discovery();
+    let device: HidDevice = HidApi::new()
+        .and_then(|api: HidApi| api.open_path(&path))
+        .map_err(|error: HidError| format!("opening {HIDRAW} for commands: {error}"))?;
+    Command::HANDSHAKE
+        .into_iter()
+        .try_for_each(|command: Command| {
+            let response: Vec<u8> = exchange(&device, command)
+                .map_err(|error: HidError| format!("sending {command:?}: {error}"))?;
+            command
+                .check(&response)
+                .map_err(|refusal| format!("{command:?} refused: {refusal}"))
+        })
+}
+
+fn exchange(device: &HidDevice, command: Command) -> Result<Vec<u8>, HidError> {
+    device.send_feature_report(&command.request())?;
+    thread::sleep(COMMAND_WAIT);
+    let mut response: [u8; FEATURE_REPORT_LEN] = [0; FEATURE_REPORT_LEN];
+    let length: usize = device.get_feature_report(&mut response)?;
+    Ok(response[..length].to_vec())
 }
 
 const fn key_code(key: VendorKey) -> KeyCode {

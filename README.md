@@ -19,6 +19,14 @@ handling is untouched.
 | Mute | `0x52` | `KEY_MUTE` |
 | Volume wheel | `0x50`, `0x51` | nothing |
 
+In its default mode the keyboard applies its own FN layer: FN+F12 changes the backlight
+and never reaches the host, and the media keys bypass report 4. So at start the daemon
+puts the keyboard in driver mode, the mode Razer's own drivers use, with a feature
+report on interface 1 (class `0x00`, command `0x04`, mode `0x03`), and reads the mode
+back. From then on FN+F12 arrives as Super+F12 and every FN chord is the host's to
+bind. The keyboard returns to its own mode when it is unplugged; stopping the daemon
+leaves it in driver mode.
+
 Previous, Play/Pause and Next are spare keys so that their meaning is bound in the
 compositor, not here. The wheel is ignored because the one this was written for is
 physically broken and jitters.
@@ -48,6 +56,7 @@ The uninstall steps are in reverse: stop the service, then remove those three fi
 | Every held key is released on every exit that runs to completion | Super left stuck down would capture all later typing | `after_end` tests in `core/src/lib.rs`, `translate` tests in `src/main.rs` |
 | Every emitted key code is registered on the uinput device | uinput silently drops an unregistered code | `create_keys` builds its set from `key_code` over `VendorKey::ALL` |
 | ENODEV, EIO and end of stream exit 0; anything else exits 1 | `Restart=on-failure` must not loop on an unplugged keyboard but must retry real faults | `accept_disconnect` tests in `src/main.rs` |
+| The daemon translates only after the keyboard has answered the mode command and read back driver mode; any other answer exits 1 | Without driver mode the firmware swallows FN chords, and a mode command sent blind would be a false green | `mode` tests in `core/src/lib.rs`; `enter_driver_mode` runs before any report is read |
 | SIGTERM and SIGKILL have no handler | Assumed: closing the uinput device releases its keys | Nothing; not tested |
 | The core has no dependencies and no `std` | Report logic stays testable with no I/O in its tree | `#![no_std]`, `hex-lint` |
 
@@ -58,7 +67,7 @@ The uninstall steps are in reverse: stop the service, then remove those three fi
 Runs the no-comments gate, rustfmt, clippy, the tests and `hex-lint`.
 
 Mutation testing with `cargo mutants --workspace` leaves three survivors in the I/O
-shell (`main`, `run`, `emit`). They need a real hidraw and uinput
+shell (`main`, `run`, `emit`, `enter_driver_mode`, `exchange`). They need a real hidraw and uinput
 device, so no unit test reaches them.
 
 There is no generated view of the structure: the project is two crates and a two-state enum, so

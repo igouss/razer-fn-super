@@ -1,5 +1,9 @@
 #![no_std]
 
+mod mode;
+
+pub use mode::{Command, FEATURE_REPORT_LEN, Refusal};
+
 const REPORT_ID: u8 = 0x04;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

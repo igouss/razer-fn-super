@@ -1,5 +1,5 @@
 [Unit]
-Description=Razer BlackWidow Elite FN key as Super
+Description=Razer BlackWidow Elite FN and media keys
 
 [Service]
 ExecStart=/usr/local/bin/razer-fn-super

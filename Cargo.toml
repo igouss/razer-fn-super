@@ -39,6 +39,7 @@ role = "composition-root"
 
 [dependencies]
 evdev = "0.13"
+hidapi = { version = "2.6", default-features = false, features = ["linux-native-basic-udev"] }
 libc = "0.2"
 razer-fn-super-core = { path = "core" }
 
