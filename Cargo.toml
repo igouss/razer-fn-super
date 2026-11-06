@@ -27,7 +27,7 @@ must_use_candidate = "allow"
 [package]
 name = "razer-fn-super"
 version = "0.1.0"
-description = "Make the Razer BlackWidow Elite FN key act as Super"
+description = "Make the Razer BlackWidow Elite FN key act as Super and give its media keys key codes"
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
